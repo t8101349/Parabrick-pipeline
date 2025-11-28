@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # === 參數解析 ===
 re='^(--help|-h)$'
 if [[ $1 =~ $re ]]; then
@@ -24,7 +26,7 @@ else
     if [[ -z "$filter" ]]; then
         filter="3.0103"
     fi
-
+fi
 
 
 #wget -c ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg38/dbsnp_146.hg38.vcf.gz
@@ -216,5 +218,20 @@ docker run --rm -v /home/weber:/data broadinstitute/gatk:4.3.0.0 \
     --filter-name "LowGQ" --filter-expression "GQ < 0" \
     --filter-name "LowDepth" --filter-expression "DP < 1" \
     --filter-name "LowAF" --filter-expression "AF < 0.2"
+
+
+
+# trim版 統計
+docker run --rm -u $(id -u):$(id -g) -v /home/weber:/data biocontainers/bcftools:v1.9-1-deb_cv1 \
+  bcftools query -f '%FILTER\n' /data/outputdir/${sample}/${sample}_filtered.haplotypecaller.vcf.gz | sort | uniq -c
+
+docker run --rm -u $(id -u):$(id -g) -v /home/weber:/data biocontainers/bcftools:v1.9-1-deb_cv1 \
+  bcftools view -H /data/outputdir/${sample}/${sample}.haplotypecaller.g.vcf.gz | wc -l
+
+docker run --rm -u $(id -u):$(id -g) -v /home/weber:/data biocontainers/bcftools:v1.9-1-deb_cv1 \
+  bcftools query -f '%FILTER\n' /data/outputdir/${sample}/${sample}_filtered.deepvariant.vcf.gz | sort | uniq -c
+
+docker run --rm -u $(id -u):$(id -g) -v /home/weber:/data biocontainers/bcftools:v1.9-1-deb_cv1 \
+  bcftools view -H /data/outputdir/${sample}/${sample}.deepvariant.g.vcf.gz | wc -l
 
 
