@@ -1,5 +1,27 @@
 #!/bin/bash
 
+# === Help ===
+Help() {
+    echo "
+使用方式: $(basename "$0") [參數]
+
+必要參數:
+  -s, --sample         Sample name
+
+選用參數:
+  -r, --ref            default: Homo_sapiens_assembly38.fasta
+  -f, --folder         default: plate1
+  -k, --knownSites     knownSites VCF 
+  --filter             
+
+其他:
+  -h, --help   
+  
+  example: parallel --joblog log/fastqc.log --bar --eta -j 30 'bash fastqc.sh --sample {}' :::: sample_list.txt
+"
+  
+
+
 # === 參數解析 ===
 re='^(--help|-h)$'
 if [[ $1 =~ $re ]]; then
@@ -8,6 +30,7 @@ else
     while [ "$#" -gt 0 ]; do
         case "$1" in
             -r|--ref) ref="$2"; shift 2;;
+            -f|--folder} folder="$2" shift 2;;
             -s|--sample) sample="$2"; shift 2;;
             -k|--knownSites) knownSites="$2"; shift 2;;
             -f|--filter) out="$2"; shift 2;;
@@ -19,6 +42,9 @@ else
     if [[ -z "$sample" ]]; then
         echo "❌ 必要參數缺失，請確認 --sample 是否有指定。" >&2
         exit 1
+    fi
+    if [[ -z "$folder" ]]; then
+        folder="plate1"
     fi
     if [[ -z "$ref" ]]; then
         ref="Homo_sapiens_assembly38.fasta"
@@ -46,39 +72,39 @@ fi
 # 合併 R1
 (
 for LANE in {1..8}; do
-    DIR=$(ls -d /mnt/NovaSeqX/GalateaBio/plate1/fastq/${sample}_L${LANE}_ds.*)
+    DIR=$(ls -d /mnt/NovaSeqX/GalateaBio/${folder}/fastq/${sample}_L${LANE}_ds.*)
     ls ${DIR}/*R1_001.fastq.gz | sort
 done
-) | xargs cat > /home/weber/tmp/${sample}_R1_all.fastq.gz
+) | xargs cat > /mnt/Results/weber/tmp/${sample}_R1_all.fastq.gz
 # 合併 R2
 (
 for LANE in {1..8}; do
-    DIR=$(ls -d /mnt/NovaSeqX/GalateaBio/plate1/fastq/${sample}_L${LANE}_ds.*)
+    DIR=$(ls -d /mnt/NovaSeqX/GalateaBio/${folder}/fastq/${sample}_L${LANE}_ds.*)
     ls ${DIR}/*R2_001.fastq.gz | sort
 done
-) | xargs cat > /home/weber/tmp/${sample}_R2_all.fastq.gz
+) | xargs cat > /mnt/Results/weber/tmp/${sample}_R2_all.fastq.gz
 
 mkdir -p /home/weber/QC/${sample}
-# 前qc
+# pre qc
 docker run \
   --rm \
   -v /mnt:/mnt \
   -v /home:/home \
   biocontainers/fastqc:v0.11.9_cv8 \
   fastqc \
-    /home/weber/tmp/${sample}_R1_all.fastq.gz \
-    /home/weber/tmp/${sample}_R2_all.fastq.gz \
+    /mnt/Results/weber/tmp/${sample}_R1_all.fastq.gz \
+    /mnt/Results/weber/tmp/${sample}_R2_all.fastq.gz \
     -o /home/weber/QC/${sample}/
 
 
 # trim
-out_dir=/home/weber/fastp_trim/${sample}
+out_dir=/mnt/Results/weber/fastp_trim/${sample}
 mkdir -p $out_dir
 
 docker run --rm -v /home:/home quay.io/biocontainers/fastp:0.23.2--h79da9fb_0 \
   fastp \
-    -i /home/weber/tmp/${sample}_R1_all.fastq.gz \
-    -I /home/weber/tmp/${sample}_R2_all.fastq.gz \
+    -i /mnt/Results/weber/tmp/${sample}_R1_all.fastq.gz \
+    -I /mnt/Results/weber/tmp/${sample}_R2_all.fastq.gz \
     -o ${out_dir}/${sample}_R1_trim.fastq.gz \
     -O ${out_dir}/${sample}_R2_trim.fastq.gz \
     -q 30 -u 50 -l 40 -w 16 -t 4 -T 4 \
@@ -93,8 +119,8 @@ docker run \
   -v /home:/home \
   biocontainers/fastqc:v0.11.9_cv8 \
   fastqc \
-    /home/weber/fastp_trim/${sample}/${sample}_R1_trim.fastq.gz \
-    /home/weber/fastp_trim/${sample}/${sample}_R2_trim.fastq.gz \
+    ${out_dir}/${sample}/${sample}_R1_trim.fastq.gz \
+    ${out_dir}/${sample}/${sample}_R2_trim.fastq.gz \
     -o /home/weber/QC/${sample}/
 
 
@@ -108,8 +134,8 @@ docker run \
   nvcr.io/nvidia/clara/clara-parabricks:4.6.0-1 \
 pbrun fq2bam \
     --ref /home/weber/parabricks_sample/Ref/${ref} \
-    --in-fq /home/weber/fastp_trim/${sample}/${sample}_R1_trim.fastq.gz \
-            /home/weber/fastp_trim/${sample}/${sample}_R2_trim.fastq.gz \
+    --in-fq ${out_dir}/${sample}/${sample}_R1_trim.fastq.gz \
+            ${out_dir}/${sample}/${sample}_R2_trim.fastq.gz \
     --read-group-id-prefix ${sample} --read-group-sm ${sample} --read-group-lb lib1 --read-group-pl ILLUMINA \
     --out-bam /home/weber/outputdir/${sample}/${sample}_fq2bam_output.bam \
     --out-duplicate-metrics /home/weber/outputdir/${sample}/${sample}.dup_metrics.txt \
@@ -221,7 +247,7 @@ docker run --rm -v /home/weber:/data broadinstitute/gatk:4.3.0.0 \
 
 
 
-# trim版 統計
+# statistics
 docker run --rm -u $(id -u):$(id -g) -v /home/weber:/data biocontainers/bcftools:v1.9-1-deb_cv1 \
   bcftools query -f '%FILTER\n' /data/outputdir/${sample}/${sample}_filtered.haplotypecaller.vcf.gz | sort | uniq -c
 

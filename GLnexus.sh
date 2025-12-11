@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # gvcf 整合於一個資料夾
+# example:
 # dpv/sample1.g.vcf.gz
 # dpv/sample2.g.vcf.gz
 
