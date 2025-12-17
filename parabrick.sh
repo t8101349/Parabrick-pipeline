@@ -18,6 +18,7 @@ Help() {
   -h, --help   
   
   example: parallel --joblog log/fastqc.log --bar --eta -j 30 'bash parabrick.sh --folder plate2 --sample {}' :::: sample_list.txt
+  note: need docker image 'docker pull nvcr.io/nvidia/clara/clara-parabricks:4.6.0-1' first
 "
   }
 
